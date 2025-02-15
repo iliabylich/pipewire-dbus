@@ -55,6 +55,9 @@ impl AudioSink {
             bail!("Pod is not an Object");
         };
 
+        let mut volume_changed = None;
+        let mut mute_changed = None;
+
         for prop in object.properties {
             if prop.key == SPA_PROP_channelVolumes {
                 if let Value::ValueArray(ValueArray::Float(floats)) = prop.value {
@@ -65,20 +68,25 @@ impl AudioSink {
                     let volume = (floats[0] + floats[1]) / 2.0;
                     // convert to linear
                     let volume = volume.powf(1.0 / 3.0);
-                    if let Err(err) = event_tx.blocking_send(Event::VolumeChanged(volume)) {
-                        log::error!("Failed to send event, channel is closed: {:?}", err);
-                    }
+                    volume_changed = Some(volume);
                 } else {
                     bail!("channelVolumes must be an Array of Floats");
                 }
             } else if prop.key == SPA_PROP_mute {
                 if let Value::Bool(bool) = prop.value {
-                    if let Err(err) = event_tx.blocking_send(Event::MuteChanged(bool)) {
-                        log::error!("Failed to send event, channel is closed: {:?}", err);
-                    }
+                    mute_changed = Some(bool);
                 } else {
                     bail!("mute must be Bool");
                 }
+            }
+        }
+
+        if volume_changed.is_some() || mute_changed.is_some() {
+            if let Err(err) = event_tx.blocking_send(Event {
+                volume_changed,
+                muted_changed: mute_changed,
+            }) {
+                log::error!("Failed to send event, channel is closed: {:?}", err);
             }
         }
 

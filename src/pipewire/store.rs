@@ -100,32 +100,6 @@ impl Store {
         })
     }
 
-    pub(crate) fn with_default_device<T>(
-        f: impl Fn(&Device, (i32, i32)) -> Result<T>,
-    ) -> Result<T> {
-        with_store(|store| {
-            let sink_name = store
-                .default_sink_name
-                .as_ref()
-                .context("no default sink name")?;
-            let sink_id = store
-                .sink_name_to_sink_id
-                .get(sink_name)
-                .context("no default sink ID")?;
-            let device_id = store
-                .sink_id_to_device_id
-                .get(sink_id)
-                .context("no default device ID")?;
-            let device = store.devices.get(device_id).context("not default device")?;
-            let route = store
-                .device_id_to_route
-                .get(device_id)
-                .context("no default route")?;
-
-            f(device, *route)
-        })
-    }
-
     pub(crate) fn remove(id: u32) -> Result<()> {
         with_store(|store| {
             store.devices.remove(&id);
