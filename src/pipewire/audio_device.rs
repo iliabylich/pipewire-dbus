@@ -1,10 +1,10 @@
 use crate::pipewire::Store;
-use anyhow::{anyhow, bail, Context as _, Result};
+use anyhow::{Context as _, Result, anyhow, bail};
 use pipewire::{
     device::Device,
     spa::{
         param::ParamType,
-        pod::{deserialize::PodDeserializer, Pod, Value},
+        pod::{Pod, Value, deserialize::PodDeserializer},
         sys::{SPA_PARAM_ROUTE_device, SPA_PARAM_ROUTE_index},
     },
 };

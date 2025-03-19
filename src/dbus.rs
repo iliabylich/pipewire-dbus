@@ -1,6 +1,6 @@
 use crate::Event;
 use anyhow::Result;
-use zbus::{interface, object_server::SignalEmitter, Connection};
+use zbus::{Connection, interface, object_server::SignalEmitter};
 
 pub(crate) struct DBus {
     volume: u32,

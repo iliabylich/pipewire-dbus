@@ -1,10 +1,10 @@
-use crate::{pipewire::Store, Event};
-use anyhow::{anyhow, bail, ensure, Context as _, Result};
+use crate::{Event, pipewire::Store};
+use anyhow::{Context as _, Result, anyhow, bail, ensure};
 use pipewire::{
     node::Node,
     spa::{
         param::ParamType,
-        pod::{deserialize::PodDeserializer, Pod, Value, ValueArray},
+        pod::{Pod, Value, ValueArray, deserialize::PodDeserializer},
         sys::{SPA_PROP_channelVolumes, SPA_PROP_mute},
         utils::dict::DictRef,
     },
