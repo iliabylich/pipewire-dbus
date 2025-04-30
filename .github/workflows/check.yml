@@ -1,0 +1,24 @@
+name: check
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl
+
+      - run: sudo apt update
+      - run: sudo apt install libpipewire-0.3-dev
+      - run: cargo check
