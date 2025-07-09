@@ -35,3 +35,14 @@ $ busctl --user monitor org.local.PipewireDBus
 ```
 
 ... and try changing volume/mute your device. You'll see a stream of events in your terminal.
+
+
+## Building for packaging
+
+Use Meson:
+
+```sh
+meson setup builddir --buildtype=release --prefix=$PWD/test-install/usr
+meson compile -C builddir
+meson install -C builddir
+```
