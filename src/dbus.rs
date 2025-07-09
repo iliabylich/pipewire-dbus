@@ -1,7 +1,8 @@
 use crate::Event;
-use anyhow::Result;
-use zbus::{Connection, interface, object_server::SignalEmitter};
+use anyhow::{Context as _, Result};
+use zbus::{Connection, interface};
 
+#[derive(Default)]
 pub(crate) struct DBus {
     volume: u32,
     muted: bool,
@@ -9,17 +10,15 @@ pub(crate) struct DBus {
 
 #[interface(name = "org.local.PipewireDBus")]
 impl DBus {
-    #[zbus(property(emits_changed_signal = "false"))]
-    async fn data(&self) -> (u32, bool) {
-        (self.volume, self.muted)
+    #[zbus(property)]
+    async fn volume(&self) -> u32 {
+        self.volume
     }
 
-    #[zbus(signal)]
-    async fn data_changed(
-        emitter: &SignalEmitter<'_>,
-        volume: u32,
-        muted: bool,
-    ) -> zbus::Result<()>;
+    #[zbus(property)]
+    async fn muted(&self) -> bool {
+        self.muted
+    }
 }
 
 impl DBus {
@@ -32,14 +31,25 @@ impl DBus {
         {
             let mut obj = iface.get_mut().await;
             if let Some(volume) = event.volume_changed {
-                log::info!("volume: {} -> {volume}", obj.volume);
-                obj.volume = (volume * 100.0) as u32;
+                if volume != obj.volume {
+                    log::info!("volume: {} -> {volume}", obj.volume);
+                    obj.volume = volume;
+
+                    obj.volume_changed(iface.signal_emitter())
+                        .await
+                        .context("failed to notify DBus about volume changes")?;
+                }
             }
             if let Some(muted) = event.muted_changed {
-                log::info!("muted: {} -> {muted}", obj.muted);
-                obj.muted = muted;
+                if muted != obj.muted {
+                    log::info!("muted: {} -> {muted}", obj.muted);
+                    obj.muted = muted;
+
+                    obj.muted_changed(iface.signal_emitter())
+                        .await
+                        .context("failed to notify DBus about muted changes")?;
+                }
             }
-            iface.data_changed(obj.volume, obj.muted).await?;
         }
 
         Ok(())
@@ -50,13 +60,7 @@ impl DBus {
 
         connection
             .object_server()
-            .at(
-                "/org/local/PipewireDBus",
-                DBus {
-                    volume: 0,
-                    muted: false,
-                },
-            )
+            .at("/org/local/PipewireDBus", DBus::default())
             .await?;
         connection.request_name("org.local.PipewireDBus").await?;
 

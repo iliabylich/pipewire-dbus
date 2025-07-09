@@ -2,10 +2,7 @@
 "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
 <node>
 <interface name="org.local.PipewireDBus">
-    <property name="Data" type="(ub)" access="read"/>
-    <signal name="DataChanged">
-      <arg name="volume" type="u"/>
-      <arg name="muted" type="b"/>
-    </signal>
+    <property name="Volume" type="u" access="read"/>
+    <property name="Muted" type="b" access="read"/>
 </interface>
 </node>

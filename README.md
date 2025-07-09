@@ -2,8 +2,9 @@
 
 This package integrates both with Pipewire and DBus and provides:
 
-1. `Data` DBus property that returns a tuple of volume and muted flag
-3. `DataChanged` signal that is triggered with update data tuple
+1. `Volume` DBus property that returns current volume (as u32)
+2. `Muted` DBus property that returns current muted flag (as bool)
+3. standard `org.freedesktop.DBus.Properties` interface for receiving notifications when one of these values is changed
 
 Exact schema is available in `org.local.PipewireDBus.xml` file but you can also retrieve it from locally running daemon:
 
@@ -16,15 +17,15 @@ The service also supports introspection:
 ```sh
 $ busctl --user introspect org.local.PipewireDBus /org/local/PipewireDBus org.local.PipewireDBus
 NAME                   TYPE      SIGNATURE RESULT/VALUE FLAGS
-.Data                  property  (ub)      34 false     -
-.DataChanged           signal    ub        -            -
+.Muted                 property  b         false        emits-change
+.Volume                property  u         0            emits-change
 ```
 
 ## Getting data
 
 ```sh
-$ busctl --user get-property org.local.PipewireDBus /org/local/PipewireDBus org.local.PipewireDBus Data
-(ub) 34 false
+$ busctl --user get-property org.local.PipewireDBus /org/local/PipewireDBus org.local.PipewireDBus Volume
+u 32
 ```
 
 ## Signals
