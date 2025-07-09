@@ -1,5 +1,5 @@
 #[derive(Debug)]
-pub(crate) struct Event {
-    pub(crate) volume_changed: Option<u32>,
-    pub(crate) muted_changed: Option<bool>,
+pub(crate) enum Event {
+    Volume(u32),
+    Mute(bool),
 }

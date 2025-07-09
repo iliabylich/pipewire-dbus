@@ -1,23 +1,65 @@
 use crate::Event;
 use anyhow::{Context as _, Result};
+use std::ops::Deref;
 use zbus::{Connection, interface};
 
 #[derive(Default)]
+struct Attribute<T>(Option<T>);
+
+impl<T> Attribute<T>
+where
+    T: Clone + Copy + PartialEq,
+{
+    fn write(&mut self, new: T) -> Option<T> {
+        if let Some(prev) = self.0 {
+            if prev != new {
+                self.0 = Some(new);
+                Some(prev)
+            } else {
+                None
+            }
+        } else {
+            // initial call doesn't emit any DBus property changes
+            self.0 = Some(new);
+            None
+        }
+    }
+}
+
+impl<T> Deref for Attribute<T> {
+    type Target = Option<T>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+#[derive(Default)]
 pub(crate) struct DBus {
-    volume: u32,
-    muted: bool,
+    volume: Attribute<u32>,
+    muted: Attribute<bool>,
+}
+
+impl DBus {
+    fn set_volume(&mut self, volume: u32) -> Option<u32> {
+        self.volume.write(volume)
+    }
+
+    fn set_muted(&mut self, muted: bool) -> Option<bool> {
+        self.muted.write(muted)
+    }
 }
 
 #[interface(name = "org.local.PipewireDBus")]
 impl DBus {
     #[zbus(property)]
     async fn volume(&self) -> u32 {
-        self.volume
+        self.volume.unwrap_or_default()
     }
 
     #[zbus(property)]
     async fn muted(&self) -> bool {
-        self.muted
+        self.muted.unwrap_or_default()
     }
 }
 
@@ -30,24 +72,25 @@ impl DBus {
 
         {
             let mut obj = iface.get_mut().await;
-            if let Some(volume) = event.volume_changed {
-                if volume != obj.volume {
-                    log::info!("volume: {} -> {volume}", obj.volume);
-                    obj.volume = volume;
 
-                    obj.volume_changed(iface.signal_emitter())
-                        .await
-                        .context("failed to notify DBus about volume changes")?;
+            match event {
+                Event::Volume(volume) => {
+                    if let Some(volume_was) = obj.set_volume(volume) {
+                        log::info!("volume: {volume_was} -> {volume}");
+
+                        obj.volume_changed(iface.signal_emitter())
+                            .await
+                            .context("failed to notify DBus about volume changes")?;
+                    }
                 }
-            }
-            if let Some(muted) = event.muted_changed {
-                if muted != obj.muted {
-                    log::info!("muted: {} -> {muted}", obj.muted);
-                    obj.muted = muted;
+                Event::Mute(muted) => {
+                    if let Some(muted_was) = obj.set_muted(muted) {
+                        log::info!("muted: {muted_was} -> {muted}");
 
-                    obj.muted_changed(iface.signal_emitter())
-                        .await
-                        .context("failed to notify DBus about muted changes")?;
+                        obj.muted_changed(iface.signal_emitter())
+                            .await
+                            .context("failed to notify DBus about muted changes")?;
+                    }
                 }
             }
         }
