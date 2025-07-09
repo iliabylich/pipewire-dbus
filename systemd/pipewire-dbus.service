@@ -1,0 +1,10 @@
+[Unit]
+Description=Pipewire DBus
+After=pipewire.service
+Requires=pipewire.service
+ConditionPathExists=%t/pipewire-0
+
+[Service]
+ExecStart=pipewire-dbus
+Restart=on-failure
+RestartSec=5s
