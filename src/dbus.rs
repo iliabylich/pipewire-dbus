@@ -32,9 +32,11 @@ impl DBus {
         {
             let mut obj = iface.get_mut().await;
             if let Some(volume) = event.volume_changed {
+                log::info!("volume: {} -> {volume}", obj.volume);
                 obj.volume = (volume * 100.0) as u32;
             }
             if let Some(muted) = event.muted_changed {
+                log::info!("muted: {} -> {muted}", obj.muted);
                 obj.muted = muted;
             }
             iface.data_changed(obj.volume, obj.muted).await?;
