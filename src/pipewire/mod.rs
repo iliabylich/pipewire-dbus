@@ -1,12 +1,11 @@
 use crate::Event;
 use anyhow::{Context as _, Result};
 use pipewire::{
-    context::Context,
-    core::Core,
-    main_loop::MainLoop,
+    context::ContextRc,
+    main_loop::MainLoopRc,
     metadata::Metadata,
     node::Node,
-    registry::{GlobalObject, Registry},
+    registry::{GlobalObject, RegistryBox},
     spa::{param::ParamType, pod::Pod, utils::dict::DictRef},
 };
 use sink_props::SinkProps;
@@ -19,7 +18,36 @@ mod store;
 
 pub(crate) fn start(tx: Sender<Event>) {
     std::thread::spawn(|| {
-        if let Err(err) = Pipewire::start(tx) {
+        let Ok(mainloop) = MainLoopRc::new(None)
+            .inspect_err(|err| log::error!("failed to instantiate PW loop: {err:?}"))
+        else {
+            return;
+        };
+
+        let Ok(context) = ContextRc::new(&mainloop, None)
+            .inspect_err(|err| log::error!("failed to construct context: {err:?}"))
+        else {
+            return;
+        };
+
+        let Ok(core) = context
+            .connect(None)
+            .inspect_err(|err| log::error!("failed to get core: {err:?}"))
+        else {
+            return;
+        };
+
+        let Ok(registry) = core
+            .get_registry()
+            .inspect_err(|err| log::error!("failed to get registry: {err:?}"))
+        else {
+            return;
+        };
+
+        let registry: RegistryBox<'static> =
+            unsafe { std::mem::transmute::<_, RegistryBox<'static>>(registry) };
+
+        if let Err(err) = Pipewire::start(tx, mainloop, registry) {
             log::error!("Failed to start PW loop: {:?}", err);
         }
     });
@@ -37,12 +65,7 @@ macro_rules! try_or_log {
 }
 
 struct Pipewire {
-    mainloop: MainLoop,
-    #[expect(dead_code)]
-    context: Context,
-    #[expect(dead_code)]
-    core: Core,
-    registry: Registry,
+    registry: RegistryBox<'static>,
     tx: Sender<Event>,
 }
 
@@ -56,19 +79,23 @@ fn pw() -> &'static mut Pipewire {
 }
 
 impl Pipewire {
-    pub(crate) fn start(tx: Sender<Event>) -> Result<()> {
+    pub(crate) fn start(
+        tx: Sender<Event>,
+        mainloop: MainLoopRc,
+        registry: RegistryBox<'static>,
+    ) -> Result<()> {
         Store::init();
-        Self::init(tx)?;
+        Self::init(tx, registry)?;
 
         let _listener = add_global_listener();
 
-        pw().mainloop.run();
+        mainloop.run();
 
         Ok(())
     }
 
-    fn init(tx: Sender<Event>) -> Result<()> {
-        let pipewire = Self::try_new(tx)?;
+    fn init(tx: Sender<Event>, registry: RegistryBox<'static>) -> Result<()> {
+        let pipewire = Self::try_new(tx, registry)?;
         unsafe {
             #[expect(static_mut_refs)]
             PIPEWIRE.write(pipewire);
@@ -76,19 +103,8 @@ impl Pipewire {
         Ok(())
     }
 
-    fn try_new(tx: Sender<Event>) -> Result<Self> {
-        let mainloop = MainLoop::new(None).context("failed to instantiate PW loop")?;
-        let context = Context::new(&mainloop).context("failed to construct context")?;
-        let core = context.connect(None).context("failed to get core")?;
-        let registry = core.get_registry().context("failed to get registry")?;
-
-        Ok(Self {
-            mainloop,
-            context,
-            core,
-            registry,
-            tx,
-        })
+    fn try_new(tx: Sender<Event>, registry: RegistryBox<'static>) -> Result<Self> {
+        Ok(Self { registry, tx })
     }
 }
 
