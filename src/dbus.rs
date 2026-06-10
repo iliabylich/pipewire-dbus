@@ -1,6 +1,5 @@
 use crate::Event;
 use anyhow::{Context as _, Result};
-use std::ops::Deref;
 use zbus::{Connection, interface};
 
 #[derive(Default)]
@@ -26,48 +25,35 @@ where
     }
 }
 
-impl<T> Deref for Attribute<T> {
-    type Target = Option<T>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
+pub(crate) struct DBus {
+    connection: Connection,
 }
 
 #[derive(Default)]
-pub(crate) struct DBus {
+struct PipewireDBusState {
     volume: Attribute<u32>,
     muted: Attribute<bool>,
 }
 
-impl DBus {
-    fn set_volume(&mut self, volume: u32) -> Option<u32> {
-        self.volume.write(volume)
-    }
-
-    fn set_muted(&mut self, muted: bool) -> Option<bool> {
-        self.muted.write(muted)
-    }
-}
-
 #[interface(name = "org.local.PipewireDBus")]
-impl DBus {
+impl PipewireDBusState {
     #[zbus(property)]
     async fn volume(&self) -> u32 {
-        self.volume.unwrap_or_default()
+        self.volume.0.unwrap_or_default()
     }
 
     #[zbus(property)]
     async fn muted(&self) -> bool {
-        self.muted.unwrap_or_default()
+        self.muted.0.unwrap_or_default()
     }
 }
 
 impl DBus {
-    pub(crate) async fn handle_event(connection: &Connection, event: Event) -> Result<()> {
-        let iface = connection
+    pub(crate) async fn handle_event(&self, event: Event) -> Result<()> {
+        let iface = self
+            .connection
             .object_server()
-            .interface::<_, DBus>("/org/local/PipewireDBus")
+            .interface::<_, PipewireDBusState>("/org/local/PipewireDBus")
             .await?;
 
         {
@@ -75,7 +61,7 @@ impl DBus {
 
             match event {
                 Event::Volume(volume) => {
-                    if let Some(volume_was) = obj.set_volume(volume) {
+                    if let Some(volume_was) = obj.volume.write(volume) {
                         log::info!("volume: {volume_was} -> {volume}");
 
                         obj.volume_changed(iface.signal_emitter())
@@ -84,7 +70,7 @@ impl DBus {
                     }
                 }
                 Event::Mute(muted) => {
-                    if let Some(muted_was) = obj.set_muted(muted) {
+                    if let Some(muted_was) = obj.muted.write(muted) {
                         log::info!("muted: {muted_was} -> {muted}");
 
                         obj.muted_changed(iface.signal_emitter())
@@ -98,15 +84,15 @@ impl DBus {
         Ok(())
     }
 
-    pub(crate) async fn connect() -> Result<Connection> {
+    pub(crate) async fn connect() -> Result<Self> {
         let connection = Connection::session().await?;
 
         connection
             .object_server()
-            .at("/org/local/PipewireDBus", DBus::default())
+            .at("/org/local/PipewireDBus", PipewireDBusState::default())
             .await?;
         connection.request_name("org.local.PipewireDBus").await?;
 
-        Ok(connection)
+        Ok(Self { connection })
     }
 }

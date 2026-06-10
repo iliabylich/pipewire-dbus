@@ -1,8 +1,15 @@
-use anyhow::{anyhow, bail, ensure};
+use anyhow::anyhow;
 use pipewire::spa::{
-    pod::{Pod, Value, ValueArray, deserialize::PodDeserializer},
+    pod::{
+        Pod, Value, ValueArray,
+        deserialize::{
+            DeserializeError, DeserializeSuccess, ObjectPodDeserializer, PodDeserialize,
+            PodDeserializer, Visitor,
+        },
+    },
     sys::{SPA_PROP_channelVolumes, SPA_PROP_mute},
 };
+use std::convert::Infallible;
 
 pub(crate) struct SinkProps {
     pub(crate) volume: Option<u32>,
@@ -13,41 +20,60 @@ impl TryFrom<&Pod> for SinkProps {
     type Error = anyhow::Error;
 
     fn try_from(param: &Pod) -> Result<Self, Self::Error> {
-        let (_, value) = PodDeserializer::deserialize_any_from(param.as_bytes())
+        let (_, props) = PodDeserializer::deserialize_from(param.as_bytes())
             .map_err(|err| anyhow!("Failed to parse sink node's route param: {:?}", err))?;
 
-        let Value::Object(object) = value else {
-            bail!("Pod is not an Object");
-        };
+        Ok(props)
+    }
+}
 
+impl<'de> PodDeserialize<'de> for SinkProps {
+    fn deserialize(
+        deserializer: PodDeserializer<'de>,
+    ) -> Result<(Self, DeserializeSuccess<'de>), DeserializeError<&'de [u8]>>
+    where
+        Self: Sized,
+    {
+        deserializer.deserialize_object(SinkPropsVisitor)
+    }
+}
+
+struct SinkPropsVisitor;
+
+impl<'de> Visitor<'de> for SinkPropsVisitor {
+    type Value = SinkProps;
+    type ArrayElem = Infallible;
+
+    fn visit_object(
+        &self,
+        object: &mut ObjectPodDeserializer<'de>,
+    ) -> Result<Self::Value, DeserializeError<&'de [u8]>> {
         let mut volume = None;
         let mut muted = None;
 
-        for prop in object.properties {
-            if prop.key == SPA_PROP_channelVolumes {
-                if let Value::ValueArray(ValueArray::Float(floats)) = prop.value {
-                    ensure!(
-                        floats.len() == 2,
-                        "channelVolumes must contain exactly two elements"
-                    );
-                    let value = (floats[0] + floats[1]) / 2.0;
-                    // convert to linear
-                    let value = value.powf(1.0 / 3.0);
-                    // round
-                    let value = (value * 100.0) as u32;
-                    volume = Some(value);
-                } else {
-                    bail!("channelVolumes must be an Array of Floats");
+        while let Some((value, key, _flags)) = object.deserialize_property::<Value>()? {
+            if key == SPA_PROP_channelVolumes {
+                let Value::ValueArray(ValueArray::Float(floats)) = value else {
+                    return Err(DeserializeError::UnsupportedType);
+                };
+                if floats.len() != 2 {
+                    return Err(DeserializeError::InvalidType);
                 }
-            } else if prop.key == SPA_PROP_mute {
-                if let Value::Bool(value) = prop.value {
-                    muted = Some(value)
-                } else {
-                    bail!("mute must be Bool");
-                }
+
+                let value = (floats[0] + floats[1]) / 2.0;
+                // convert to linear
+                let value = value.powf(1.0 / 3.0);
+                // round
+                let value = (value * 100.0) as u32;
+                volume = Some(value);
+            } else if key == SPA_PROP_mute {
+                let Value::Bool(value) = value else {
+                    return Err(DeserializeError::UnsupportedType);
+                };
+                muted = Some(value);
             }
         }
 
-        Ok(Self { volume, muted })
+        Ok(SinkProps { volume, muted })
     }
 }

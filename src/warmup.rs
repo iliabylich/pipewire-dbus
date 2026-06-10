@@ -1,5 +1,6 @@
+use std::process::Command;
+
 use anyhow::{Context as _, Result, bail};
-use tokio::process::Command;
 
 #[cfg(debug_assertions)]
 const SILENCE_WAV: &str = "data/silence.wav";
@@ -7,13 +8,12 @@ const SILENCE_WAV: &str = "data/silence.wav";
 #[cfg(not(debug_assertions))]
 const SILENCE_WAV: &str = "/usr/share/pipewire-dbus/silence.wav";
 
-pub(crate) async fn play_silence() -> Result<()> {
+pub(crate) fn play_silence() -> Result<()> {
     log::info!("starting pipewire warmup");
 
     let output = Command::new("/usr/bin/pw-play")
         .arg(SILENCE_WAV)
         .output()
-        .await
         .context("failed to warmup pipewire")?;
 
     if !output.status.success() {

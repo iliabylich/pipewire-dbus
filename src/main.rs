@@ -1,6 +1,7 @@
 use anyhow::Result;
 use dbus::DBus;
 use event::Event;
+use pipewire::Pipewire;
 
 mod dbus;
 mod event;
@@ -11,18 +12,14 @@ mod warmup;
 async fn main() -> Result<()> {
     pretty_env_logger::init();
 
-    warmup::play_silence().await?;
+    warmup::play_silence()?;
 
-    let (tx, mut rx) = tokio::sync::mpsc::channel::<Event>(100);
     let connection = DBus::connect().await?;
+    let pipewire = Pipewire::connect()?;
 
-    std::thread::spawn(move || {
-        pipewire::start(tx);
-    });
-
-    while let Some(event) = rx.recv().await {
-        DBus::handle_event(&connection, event).await?;
+    loop {
+        for event in pipewire.wait_and_dispatch().await? {
+            DBus::handle_event(&connection, event).await?;
+        }
     }
-
-    Ok(())
 }
