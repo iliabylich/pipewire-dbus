@@ -26,7 +26,7 @@ mod warmup;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
-    pretty_env_logger::init();
+    env_logger::init();
 
     warmup::play_silence()?;
 
