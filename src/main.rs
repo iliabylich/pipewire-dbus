@@ -1,3 +1,19 @@
+#![warn(trivial_casts)]
+#![warn(trivial_numeric_casts)]
+#![warn(unused_qualifications)]
+#![warn(deprecated_in_future)]
+#![warn(unused_lifetimes)]
+#![warn(clippy::unwrap_used)]
+#![warn(clippy::expect_used)]
+#![warn(clippy::panic)]
+#![warn(clippy::indexing_slicing)]
+#![warn(clippy::arithmetic_side_effects)]
+#![warn(clippy::pedantic)]
+#![warn(clippy::nursery)]
+#![allow(clippy::map_unwrap_or)]
+#![expect(clippy::redundant_pub_crate)]
+#![expect(clippy::future_not_send)]
+
 use anyhow::Result;
 use dbus::DBus;
 use event::Event;

@@ -21,7 +21,7 @@ impl TryFrom<&Pod> for SinkProps {
 
     fn try_from(param: &Pod) -> Result<Self, Self::Error> {
         let (_, props) = PodDeserializer::deserialize_from(param.as_bytes())
-            .map_err(|err| anyhow!("Failed to parse sink node's route param: {:?}", err))?;
+            .map_err(|err| anyhow!("Failed to parse sink node's route param: {err:?}"))?;
 
         Ok(props)
     }
@@ -56,16 +56,20 @@ impl<'de> Visitor<'de> for SinkPropsVisitor {
                 let Value::ValueArray(ValueArray::Float(floats)) = value else {
                     return Err(DeserializeError::UnsupportedType);
                 };
-                if floats.len() != 2 {
+                let Ok(floats): Result<[f32; 2], _> = floats.try_into() else {
                     return Err(DeserializeError::InvalidType);
-                }
+                };
 
-                let value = (floats[0] + floats[1]) / 2.0;
+                let value = f32::midpoint(floats[0], floats[1]);
                 // convert to linear
-                let value = value.powf(1.0 / 3.0);
+                let value = value.cbrt();
                 // round
-                let value = (value * 100.0) as u32;
-                volume = Some(value);
+                let value = value * 100.0;
+
+                #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                if value.is_finite() && (0.0..=100.0).contains(&value) {
+                    volume = Some(value as u32);
+                }
             } else if key == SPA_PROP_mute {
                 let Value::Bool(value) = value else {
                     return Err(DeserializeError::UnsupportedType);

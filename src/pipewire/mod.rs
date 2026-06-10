@@ -60,7 +60,7 @@ impl Pipewire {
             _context: context,
             _core: core,
             _registry: registry.clone(),
-            _global_listener: add_global_listener(registry, store.clone(), events.clone()),
+            _global_listener: add_global_listener(&registry, &store, &events),
             _store: store,
             events,
         })
@@ -82,9 +82,9 @@ impl Pipewire {
 }
 
 fn add_global_listener(
-    registry: RegistryRc,
-    store: Store,
-    events: PendingEvents,
+    registry: &RegistryRc,
+    store: &Store,
+    events: &PendingEvents,
 ) -> pipewire::registry::Listener {
     registry
         .add_listener_local()
@@ -94,20 +94,23 @@ fn add_global_listener(
             let events = events.clone();
             move |object| {
                 try_or_log!(
-                    on_global_object_added(object, registry.clone(), store.clone(), events.clone()),
+                    on_global_object_added(object, &registry, &store, &events),
                     "failed to track new global object"
-                )
+                );
             }
         })
-        .global_remove(move |id| on_global_object_removed(id, store.clone()))
+        .global_remove({
+            let store = store.clone();
+            move |id| on_global_object_removed(id, &store)
+        })
         .register()
 }
 
 fn on_global_object_added(
     object: &GlobalObject<&DictRef>,
-    registry: RegistryRc,
-    store: Store,
-    events: PendingEvents,
+    registry: &RegistryRc,
+    store: &Store,
+    events: &PendingEvents,
 ) -> Result<()> {
     let Some(props) = object.props else {
         return Ok(());
@@ -115,7 +118,7 @@ fn on_global_object_added(
 
     if props.get("metadata.name") == Some("default") {
         let metadata: Metadata = registry.bind(object).context("not a Metadata")?;
-        on_metadata_object_added(object.id, metadata, store.clone());
+        on_metadata_object_added(object.id, metadata, store);
     }
 
     if props.get("media.class") == Some("Audio/Sink") {
@@ -127,7 +130,7 @@ fn on_global_object_added(
     Ok(())
 }
 
-fn on_metadata_object_added(id: u32, metadata: Metadata, store: Store) {
+fn on_metadata_object_added(id: u32, metadata: Metadata, store: &Store) {
     let listener = metadata
         .add_listener_local()
         .property({
@@ -135,7 +138,7 @@ fn on_metadata_object_added(id: u32, metadata: Metadata, store: Store) {
             move |_subject, key, _type, value| {
                 if let Some((key, value)) = key.zip(value) {
                     try_or_log!(
-                        on_metadata_prop_changed(key, value, store.clone()),
+                        on_metadata_prop_changed(key, value, &store),
                         "failed to process metadata prop change"
                     );
                 }
@@ -148,7 +151,7 @@ fn on_metadata_object_added(id: u32, metadata: Metadata, store: Store) {
     store.add_listener(id, Box::new(listener));
 }
 
-fn on_metadata_prop_changed(key: &str, value: &str, store: Store) -> Result<()> {
+fn on_metadata_prop_changed(key: &str, value: &str, store: &Store) -> Result<()> {
     if key == "default.audio.sink" {
         let name = jzon::parse(value)?
             .get("name")
@@ -164,7 +167,7 @@ fn on_metadata_prop_changed(key: &str, value: &str, store: Store) -> Result<()> 
     Ok(())
 }
 
-fn on_audio_sink_added(id: u32, node: Node, name: &str, store: Store, events: PendingEvents) {
+fn on_audio_sink_added(id: u32, node: Node, name: &str, store: &Store, events: &PendingEvents) {
     log::info!("audio sink added {id} {name}");
 
     node.subscribe_params(&[ParamType::Props]);
@@ -172,12 +175,13 @@ fn on_audio_sink_added(id: u32, node: Node, name: &str, store: Store, events: Pe
         .add_listener_local()
         .param({
             let store = store.clone();
+            let events = events.clone();
             move |_, _, _, _, param| {
                 if let Some(param) = param {
                     try_or_log!(
-                        on_audio_sink_prop_changed(id, param, store.clone(), events.clone()),
+                        on_audio_sink_prop_changed(id, param, &store, &events),
                         "failed to track sink property change"
-                    )
+                    );
                 }
             }
         })
@@ -190,8 +194,8 @@ fn on_audio_sink_added(id: u32, node: Node, name: &str, store: Store, events: Pe
 fn on_audio_sink_prop_changed(
     id: u32,
     param: &Pod,
-    store: Store,
-    events: PendingEvents,
+    store: &Store,
+    events: &PendingEvents,
 ) -> Result<()> {
     if !store.is_default_sink(id) {
         return Ok(());
@@ -209,6 +213,6 @@ fn on_audio_sink_prop_changed(
     Ok(())
 }
 
-fn on_global_object_removed(id: u32, store: Store) {
+fn on_global_object_removed(id: u32, store: &Store) {
     store.remove(id);
 }

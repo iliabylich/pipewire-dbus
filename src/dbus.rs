@@ -1,5 +1,6 @@
 use crate::Event;
 use anyhow::{Context as _, Result};
+use std::fmt::Debug;
 use zbus::{Connection, interface};
 
 #[derive(Default)]
@@ -7,20 +8,20 @@ struct Attribute<T>(Option<T>);
 
 impl<T> Attribute<T>
 where
-    T: Clone + Copy + PartialEq,
+    T: Clone + Copy + PartialEq + Debug,
 {
     fn write(&mut self, new: T) -> Option<T> {
-        if let Some(prev) = self.0 {
-            if prev != new {
+        match self.0 {
+            Some(prev) if prev == new => None,
+            Some(prev) => {
                 self.0 = Some(new);
                 Some(prev)
-            } else {
+            }
+            None => {
+                log::info!("swallowing initial value {new:?}");
+                self.0 = Some(new);
                 None
             }
-        } else {
-            // initial call doesn't emit any DBus property changes
-            self.0 = Some(new);
-            None
         }
     }
 }
@@ -38,12 +39,12 @@ struct PipewireDBusState {
 #[interface(name = "org.local.PipewireDBus")]
 impl PipewireDBusState {
     #[zbus(property)]
-    async fn volume(&self) -> u32 {
+    fn volume(&self) -> u32 {
         self.volume.0.unwrap_or_default()
     }
 
     #[zbus(property)]
-    async fn muted(&self) -> bool {
+    fn muted(&self) -> bool {
         self.muted.0.unwrap_or_default()
     }
 }
@@ -79,6 +80,8 @@ impl DBus {
                     }
                 }
             }
+
+            drop(obj);
         }
 
         Ok(())
